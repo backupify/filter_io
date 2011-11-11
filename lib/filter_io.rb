@@ -80,21 +80,21 @@ class FilterIO
     return '' if length == 0
     
     # fill the buffer up to the fill level (or whole input if length is nil)
-    while !source_eof? && (length.nil? || length > bytesize(@buffer))
+    while !source_eof? && (length.nil? || length > byte_size(@buffer))
       buffer_data @options[:block_size] || length
     end
     
     # we now have all the data in the buffer that we need (or can get if EOF)
     case
-    when bytesize(@buffer) > 0
+    when byte_size(@buffer) > 0
       # limit length to the buffer size if we were asked for it all or have ran out (EOF)
-      read_length = if length.nil? or length > bytesize(@buffer)
-        bytesize @buffer
+      read_length = if length.nil? or length > byte_size(@buffer)
+        byte_size @buffer
       else
         length
       end
       data = pop_bytes read_length
-      @pos += bytesize(data)
+      @pos += byte_size(data)
       if length.nil? && @io.respond_to?(:external_encoding)
         data.force_encoding @io.external_encoding
         data.encode! @io.internal_encoding if @io.internal_encoding
@@ -143,7 +143,7 @@ class FilterIO
   
   def ungetc(char)
     char = char.chr if char.respond_to? :chr
-    @pos -= bytesize(char)
+    @pos -= byte_size(char)
     @pos = 0 if @pos < 0
     @buffer = char + @buffer
   end
@@ -184,7 +184,7 @@ class FilterIO
     
     # increment the position and return the buffer fragment
     data = @buffer.slice!(0, length)
-    @pos += bytesize(data)
+    @pos += byte_size(data)
     
     data
   end
@@ -210,10 +210,15 @@ class FilterIO
     lines = []
     each_line(sep_string) { |line| lines << line }
     lines
+
   end
-  
+
   protected
-  
+
+  def byte_size(str)
+    str.respond_to?(:bytesize) ? str.bytesize : str.size
+  end
+
   def empty_string
     str = String.new
     if @io.respond_to?(:internal_encoding)
@@ -228,10 +233,6 @@ class FilterIO
       str.force_encoding @io.external_encoding
     end
     str
-  end
-  
-  def bytesize(str)
-    str.respond_to?(:bytesize) ? str.bytesize : str.size
   end
   
   def pop_bytes(count)
@@ -251,14 +252,15 @@ class FilterIO
   def buffer_data(block_size = nil)
     
     block_size ||= DEFAULT_BLOCK_SIZE
-    
-    data = unless @buffer_raw.empty?
-     @buffer_raw.slice! 0, bytesize(@buffer_raw)
+
+    if @buffer_raw.empty?
+      data = @io.read(block_size)
+      return unless data
     else
-     @io.read(block_size) or return
+      data = @buffer_raw.slice! 0, byte_size(@buffer_raw)
     end
-    
-    initial_data_size = bytesize(data)
+
+    initial_data_size = byte_size(data)
     begin
       
       data = process_data data, initial_data_size
@@ -299,7 +301,7 @@ class FilterIO
     if @io.respond_to? :external_encoding
       org_encoding = data.encoding
       data.force_encoding @io.external_encoding
-      additional_data_size = bytesize(data) - initial_data_size
+      additional_data_size = byte_size(data) - initial_data_size
       unless data.valid_encoding? or source_eof? or additional_data_size >= 4
         data.force_encoding org_encoding
         raise NeedMoreData
